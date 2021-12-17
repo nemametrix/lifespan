@@ -9,3 +9,5 @@ build/CMakeFiles/*
 windows_build/x64/*
 windows_build/.vs/*
 windows_build/Release/*
+external_compile_libraries/*
+l_ipp_2018.0.128/*

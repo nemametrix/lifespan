@@ -6,6 +6,28 @@ http://lifespanmachine.crg.eu
 
 This repository contains v2 of the lifespan machine software, comprised of
 
+
+
+```
+git submodule update --init
+```
+
+```
+docker build . -t nemametrix/lifespan
+```
+
+```
+docker run -d  --security-opt seccomp:unconfined -v <path to share>:/mnt/lifespan_share/  -v $(pwd):/home/image_server/lifespan_debug --env-file env.list  --name lifespan nemametrix/lifespan
+```
+
+```
+ctrl-b select build
+```
+
+```
+f5
+```
+
 1. Scanner control software ( *ns_image_server* ) for the distributed high-throughput microscope system first described in Stroustrup et al. "The C. elegans Lifespan Machine". Nature Methods 2013
 2. Image analysis software ( *ns_image_server* ) that extracts survival data from lifespan machine data sets
 3. Visualization software ( *ns_worm_browser* ) for inspecting and annotating images and automated analysis.

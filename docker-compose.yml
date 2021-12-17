@@ -1,0 +1,37 @@
+version: '3.3'
+
+services:
+    lifespan:
+            image: "nemametrix/lifespan"
+            build: .
+            volumes: 
+                - <path to lifespan share>:/mnt/lifespan_share/
+                # - /tmp/.X11-unix:/tmp/.X11-unix:rw
+            environment:
+                # - DISPLAY=$DISPLAY
+                - contact_name=John Doe
+                - contact_email=john@doe.edu
+                - contact_phone=609-555-1733
+                - central_sql_hostname=
+                - central_sql_username=image_server
+                - central_sql_password=
+                - default_database=image_Server
+                - ns_image_server_storage_directory=/mnt/lifespan_share/long_term_storage
+                - ns_image_server_storage_directory_absolute=/var/www/html/long_term_storage
+                - host_name=image_processing_1
+                - long_term_storage_directory=/mnt/lifespan_share/long_term_storage
+                - results_storage_directory=/mnt/lifespan_share/results_storage
+                - volatile_storage_directory=/home/image_server/volatile_storage
+                - central_sql_databases=image_server
+                - local_buffer_sql_hostname=
+                - local_buffer_sql_username=image_server
+                - local_buffer_sql_database=image_server_buffer
+                - local_buffer_sql_password=
+                - act_as_image_capture_server=no
+                - act_as_processing_node=yes
+                - nodes_per_machine=1
+                - allow_multiple_processes_per_system=yes
+            restart: always
+            entrypoint: /home/image_server/lifespan_entrypoint.sh 
+
+
