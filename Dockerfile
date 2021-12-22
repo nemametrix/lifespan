@@ -15,8 +15,6 @@ RUN apt-get update && apt -y install  gdb openssh-server rsync zip ffmpeg x264 p
 
 # copy intel ipp here
 COPY ./l_ipp_2018.0.128 ./l_ipp_2018.0.128
-COPY ./lifespan_startup_scripts/* ./
-COPY ./linux_lifespan_configs/ns_image_server_website.ini /var/www/html/image_server_web/ns_image_server_website.ini
 RUN ./l_ipp_2018.0.128/install.sh -s ./l_ipp_2018.0.128/silent.cfg
 
 
@@ -62,7 +60,20 @@ RUN make install
 
 
 
-COPY . /home/image_server/lifespan
+COPY ns_image_server/* /home/image_server/lifespan/ns_image_server/
+COPY ns_image_server_utilities/* /home/image_server/lifespan/ns_image_server_utilities/
+COPY external_compile_libraries/* /home/image_server/lifespan/external_compile_libraries/
+COPY external_libraries/* /home/image_server/lifespan/external_libraries/
+COPY ns_worm_browser/* /home/image_server/lifespan/ns_worm_browser/
+COPY web_interface/* /var/www/html/web_interface/
+COPY linux_lifespan_configs /home/image_server/lifespan
+COPY lifespan_startup_scripts /home/image_server/lifespan
+
+COPY ./lifespan_startup_scripts/* /home/image_server/
+COPY ./linux_lifespan_configs/ns_image_server_website.ini /var/www/html/image_server_web/ns_image_server_website.ini
+COPY build/* /home/image_server/lifespan/build/
+COPY files /home/image_server/lifespan
+
 
 WORKDIR /home/image_server/lifespan/build
 RUN cmake . 
@@ -72,7 +83,6 @@ RUN make install
 RUN cp ../files/dll.conf /usr/local/etc/sane.d/dll.d/
 RUN cp ../files/epson2.conf /usr/local/etc/sane.d/
 
-RUN cp -r /home/image_server/lifespan/web_interface/* /var/www/html/
 
 RUN chmod 755 /var/www/html/index.php
 RUN chmod 755 /var/www/html/image_server_web
@@ -88,16 +98,13 @@ RUN mkdir /home/image_server/volatile_storage
 RUN chmod 777 /home/image_server/lifespan_entrypoint.sh
 
 
-
-
 RUN ln -s /mnt/lifespan_share/long_term_storage /var/www/html/
-
 
 
 RUN python3 /home/image_server/entrypoint.py
 
 
-# EXPOSE 80
+EXPOSE 80
 # CMD [ "/home/image_server/lifespan_entrypoint.sh" ]
 
 WORKDIR /home/image_server/lifespan/build/
