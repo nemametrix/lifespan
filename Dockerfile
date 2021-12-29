@@ -1,20 +1,21 @@
-FROM ubuntu:latest as base
+from ubuntu:latest
 
-# Download dependancies and download lifespan repo
 WORKDIR /home/image_server
 
 
 ENV DEBIAN_FRONTEND="noninteractive" TZ="America/Los_Angeles"
 
-RUN apt-get update && apt -y install  gdb openssh-server rsync zip ffmpeg x264 psmisc sane sane-utils\
- python3-pip cpio  libmysqlclient-dev  git gcc build-essential make libtiff-dev libjpeg-dev libfreetype-dev \
+RUN apt-get update && apt-get -y install  gdb openssh-server rsync zip ffmpeg x264 psmisc sane sane-utils\
+ python3-pip cpio  libmysqlclient-dev  git gcc build-essential make libtiff-dev libjpeg-dev\
  php php-mysql libusb-dev cmake libpng-dev zlib1g-dev git libopenjp2-7-dev\
- libtool autoconf automake   xorg-dev  libgl1-mesa-dev  freeglut3-dev tzdata libusb-1.0-0-dev apache2
+ libtool autoconf automake   xorg-dev  libgl1-mesa-dev  freeglut3-dev tzdata libusb-1.0-0-dev apache2 libxvidcore-dev
 
 
 
 # copy intel ipp here
 COPY ./l_ipp_2018.0.128 ./l_ipp_2018.0.128
+COPY ./lifespan_startup_scripts/* ./
+COPY ./linux_lifespan_configs/ns_image_server_website.ini /var/www/html/image_server_web/ns_image_server_website.ini
 RUN ./l_ipp_2018.0.128/install.sh -s ./l_ipp_2018.0.128/silent.cfg
 
 
@@ -22,7 +23,7 @@ RUN python3 -m pip install mysql-connector
 
 
 
-COPY ./external_compile_libraries/ /home/image_server/lifespan/external_compile_libraries
+COPY ./external_compile_libraries /home/image_server/lifespan/external_compile_libraries
 
 
 # Build external dependancies.
@@ -60,20 +61,19 @@ RUN make install
 
 
 
-COPY ns_image_server/* /home/image_server/lifespan/ns_image_server/
-COPY ns_image_server_utilities/* /home/image_server/lifespan/ns_image_server_utilities/
-COPY external_compile_libraries/* /home/image_server/lifespan/external_compile_libraries/
-COPY external_libraries/* /home/image_server/lifespan/external_libraries/
-COPY ns_worm_browser/* /home/image_server/lifespan/ns_worm_browser/
-COPY web_interface/* /var/www/html/web_interface/
-COPY linux_lifespan_configs /home/image_server/lifespan
-COPY lifespan_startup_scripts /home/image_server/lifespan
+# COPY . /home/image_server/lifespan/
+COPY ns_image_server /home/image_server/lifespan/ns_image_server
+COPY ns_image_server_utilities /home/image_server/lifespan/ns_image_server_utilities
+# COPY external_compile_libraries/* /home/image_server/lifespan/external_compile_libraries/
+COPY external_libraries /home/image_server/lifespan/external_libraries
+COPY ns_worm_browser /home/image_server/lifespan/ns_worm_browser
+COPY binaries /home/image_server/lifespan/binaries
+COPY web_interface /var/www/html
 
-COPY ./lifespan_startup_scripts/* /home/image_server/
-COPY ./linux_lifespan_configs/ns_image_server_website.ini /var/www/html/image_server_web/ns_image_server_website.ini
-COPY build/* /home/image_server/lifespan/build/
-COPY files /home/image_server/lifespan
+# COPY l_ipp_2018.0.128/* /home/image_server/lifespan/l_ipp_2018.0.128/
 
+COPY build /home/image_server/lifespan/build
+COPY files /home/image_server/lifespan/files
 
 WORKDIR /home/image_server/lifespan/build
 RUN cmake . 
@@ -104,11 +104,8 @@ RUN ln -s /mnt/lifespan_share/long_term_storage /var/www/html/
 RUN python3 /home/image_server/entrypoint.py
 
 
-EXPOSE 80
+# EXPOSE 80
 # CMD [ "/home/image_server/lifespan_entrypoint.sh" ]
 
 WORKDIR /home/image_server/lifespan/build/
 ENTRYPOINT [ "/home/image_server/lifespan_entrypoint.sh" ]
-
-# ENTRYPOINT [ "tail", "-f","/dev/null" ]
-

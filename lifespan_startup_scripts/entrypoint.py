@@ -23,7 +23,7 @@ ns_image_server = {
 'simulated_device_name' : '.',
 'device_names' : '',
 'output_files_with_all_read_permissions' : 'yes',
-'allow_multiple_processes_per_system' : 'yes',
+'allow_multiple_processes_per_system' : os.getenv('allow_multiple_processes_per_system','no'),
 'number_of_times_to_check_empty_processing_job_queue_before_stopping' : 0,
 'act_as_processing_node' : os.getenv('act_as_processing_node','yes'),
 'nodes_per_machine' : os.getenv('nodes_per_machine','1'),
