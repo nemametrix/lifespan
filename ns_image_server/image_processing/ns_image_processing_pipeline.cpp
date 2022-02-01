@@ -630,7 +630,6 @@ void ns_image_processing_pipeline::process_region(const ns_image_server_captured
 													volatile_behavior));
 				extended_image.pump(out_im_f.output_stream(),1024);
 
-
 				out_im.mark_as_finished_processing(&sql);
 			}
 
@@ -2361,46 +2360,19 @@ void ns_image_processing_pipeline::overlay_graph(const ns_64_bit region_id,ns_im
 	const unsigned int w(lifespan_curve_graph.properties().width),
 			h(lifespan_curve_graph.properties().height);
 
-	
+
 	for (unsigned int y = 0; y < h; y++){
 		for (unsigned int x = 0; x < w; x++){
-			// ns_color_8 v(lifespan_curve_graph[y][3*x],
-			// 	 		 lifespan_curve_graph[y][3*x+1],
-			// 			 lifespan_curve_graph[y][3*x+2]);
-			// 	double sh = 1;
-			// 	if (v == ns_color_8(0,0,0))
-			// 		sh = .75;
-				// int _x = dw-w+x, // if these could accidentally be < 0 (see below) they should be signed
-				// 	_y = dh-h+y;
 
 				int _y = dh-h+y;
-				// if (_x < 0 || _x >= image.properties().width)
-				// 	throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (X)");
+				if (_x < 0 || _x >= image.properties().width)
+					throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (X)");
 				if (_y < 0 || _y >= image.properties().height)
 					throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (Y)");
 				for (unsigned int c = 0; c < 3; c++)
 					image[_y][(3*x+(w*3))+c] = (ns_8_bit)lifespan_curve_graph[y][3*x+c];	
-
 		}
 	}
-	// for (unsigned int y = 0; y < metadata_overlay.properties().height; y++){
-	// 	for (unsigned int x = 0; x < metadata_overlay.properties().width; x++){
-	// 		ns_color_8 v(metadata_overlay[y][3*x],
-	// 			 		metadata_overlay[y][3*x+1],
-	// 					metadata_overlay[y][3*x+2]);
-	// 		double sh = 1;
-	// 		if (v == ns_color_8(0,0,0))
-	// 			sh = .75;
-	// 		int _x = dw-metadata_overlay.properties().width-w+x, // if these could accidentally be < 0 (see below) they should be signed
-	// 			_y = dh-metadata_overlay.properties().height+y;
-	// 		if (_x < 0 || _x >= image.properties().width)
-	// 			throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (X)");
-	// 		if (_y < 0 || _y >= image.properties().height)
-	// 			throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (Y)");
-	// 		for (unsigned int c = 0; c < 3; c++)
-	// 			image[_y-offset][3*_x+c] = (ns_8_bit)((1.0-sh)*image[_y-offset][3*_x+c] + (sh)*metadata_overlay[y][3*x+c]);
-	// 	}
-	// }
 }
 
 
