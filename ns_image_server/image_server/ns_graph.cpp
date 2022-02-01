@@ -280,6 +280,13 @@ void ns_graph::draw_legend(const std::string& title, long line_width, bool do_no
 ns_graph_specifics ns_graph::draw(ns_image_standard & image) {
 	//check to see if input data isn't self-contradicting.
 	//Also, see if a scatter plot is desired (no global independant variable specified)
+
+	x_axis_properties.text_size = 400;
+	y_axis_properties.text_size = 400;
+
+	// std::cout << x_axis_properties.text_size << " " << y_axis_properties.text_size << '\n';
+
+
 	if (image.properties().components != 3)
 		throw ns_ex("ns_graph::Graphs must be generated in color.");
 
@@ -354,16 +361,17 @@ ns_graph_specifics ns_graph::draw(ns_image_standard & image) {
 				longest_axis_label = ns_to_string_short((float)(axes.boundary(3)));
 			else longest_axis_label = ns_to_string_short((float)((float)(axes.boundary(3))), y_axis_properties.text_decimal_places);
 			y_text_size = font_server.get_default_font().get_render_size(longest_axis_label,ns_pi/2);
-			y_text_size.w *= 1.25;
+			y_text_size.w *= 0.5;
 			if (!y_axis_label.empty())
 				y_text_size.w = y_text_size.w * 2 + MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor;
 		}
 		font_lock.release();
 	}
+	 int padding(200);
 
 	spec.boundary_bottom_and_left.x = (unsigned int)(4*MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor +y_text_size.w);
 	spec.boundary_bottom_and_left.y = (unsigned int)(4*MAJOR_TICK_HEIGHT*x_axis_properties.tick_mark_rescale_factor +x_text_size.h);
-	spec.boundary_top_and_right.x = x_text_size.h;  //this needs to be big enough to allow the half of the last x axis label tick to be rendered
+	spec.boundary_top_and_right.x = x_text_size.h/2;  //this needs to be big enough to allow the half of the last x axis label tick to be rendered
 	spec.boundary_top_and_right.y = y_text_size.h; //this needs to be big enough to allow the top of the last y axis label tick to be rendered
 	
 
@@ -391,7 +399,7 @@ ns_graph_specifics ns_graph::draw(ns_image_standard & image) {
 	line_r_width = y_axis_properties.line.width/2 + x_axis_properties.line.width%2;
 	for (unsigned int _y = top_right_border.y; _y < h- bottom_left_border.y; _y++){
 		for (int dx = -line_l_width; dx < line_r_width; dx++){
-			image[_y][3*(bottom_left_border.x+dx)+0] = y_axis_properties.line.color.x;
+			image[_y][3*(bottom_left_border.x +dx)+0] = y_axis_properties.line.color.x;
 			image[_y][3*(bottom_left_border.x +dx)+1] = y_axis_properties.line.color.y;
 			image[_y][3*(bottom_left_border.x +dx)+2] = y_axis_properties.line.color.z;
 		}
@@ -427,13 +435,17 @@ ns_graph_specifics ns_graph::draw(ns_image_standard & image) {
 			ns_font_output_dimension d = font_server.get_default_font().get_render_size(text);
 			int xp = x - d.w / 2;
 			if (xp < 0) xp = 0;
-			font_server.get_default_font().draw(xp,h- bottom_left_border.y+2*MAJOR_TICK_HEIGHT*x_axis_properties.tick_mark_rescale_factor+d.h,x_axis_properties.text.color,text,image);
+			font_server.get_default_font().draw(xp,
+												h- bottom_left_border.y+2*MAJOR_TICK_HEIGHT*x_axis_properties.tick_mark_rescale_factor+d.h,
+												x_axis_properties.text.color,
+												text,
+												image);
 		}
 	}
-	if (x_axis_properties.text.draw) {
-		ns_font_output_dimension d = font_server.get_default_font().get_render_size(x_axis_label);
-		font_server.get_default_font().draw((image.properties().width-top_right_border.x+bottom_left_border.x-d.w)/2, h - 2*MAJOR_TICK_HEIGHT*x_axis_properties.tick_mark_rescale_factor, x_axis_properties.text.color, x_axis_label, image);
-	}
+	// if (x_axis_properties.text.draw) {
+	// 	ns_font_output_dimension d = font_server.get_default_font().get_render_size(x_axis_label);
+	// 	font_server.get_default_font().draw((image.properties().width-top_right_border.x+bottom_left_border.x-d.w)/2, h - 2*MAJOR_TICK_HEIGHT*x_axis_properties.tick_mark_rescale_factor, x_axis_properties.text.color, x_axis_label, image);
+	// }
 	//y axis
 	font_server.get_default_font().set_height(y_axis_properties.text_size*FREETYPE_SCALE_FACTOR);
 	for (unsigned int i = 0; i <= spec.number_of_y_major_ticks; i++){
@@ -448,16 +460,21 @@ ns_graph_specifics ns_graph::draw(ns_image_standard & image) {
 			ns_font_output_dimension d = font_server.get_default_font().get_render_size(text);
 			int yp = y + d.h / 2;
 			//if (yp < 0) yp = 0;
-			font_server.get_default_font().draw(bottom_left_border.x -d.w- 3*MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor,yp,y_axis_properties.text.color,text,image);
+			font_server.get_default_font().draw(
+				(bottom_left_border.x -d.w- 3*MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor) -50,
+				yp,
+				y_axis_properties.text.color,
+				text,
+				image);
 		}
 	}
 
 	 //y axis height (h-2*border.y)
-	if (y_axis_properties.text.draw) {
-		ns_font_output_dimension d = font_server.get_default_font().get_render_size(y_axis_label, ns_pi / 2);
-		const int y_pos = (h + top_right_border.y - bottom_left_border.y  - d.h)/2;
-		font_server.get_default_font().draw(MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor, y_pos, ns_pi / 2, y_axis_properties.text.color, y_axis_label, image);
-	}
+	// if (y_axis_properties.text.draw) {
+	// 	ns_font_output_dimension d = font_server.get_default_font().get_render_size(y_axis_label, ns_pi / 2);
+	// 	const int y_pos = (h + top_right_border.y - bottom_left_border.y  - d.h)/2;
+	// 	font_server.get_default_font().draw(MAJOR_TICK_HEIGHT*y_axis_properties.tick_mark_rescale_factor, y_pos, ns_pi / 2, y_axis_properties.text.color, y_axis_label, image);
+	// }
 	font_lock.release();
 	//draw minor ticks
 	if (x_axis_properties.draw_tick_marks){
