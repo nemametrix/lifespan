@@ -573,50 +573,50 @@ void ns_image_processing_pipeline::process_region(const ns_image_server_captured
 					gen.create_time_path_analysis_visualization(region_image, p->second,dynamic_stretch, paths_visualization,sql);
 
 
+
 					
+					// int pad(4000);
+					// ns_image_properties old_props(paths_visualization.properties());
+					// old_props.width+=pad;
+					// // old_props.components = 3;
 
-					int pad(4000);
-					ns_image_properties old_props(paths_visualization.properties());
-					old_props.width+=pad;
-					// old_props.components = 3;
-
-					int l(pad/2),
-						b(0),
-						r(paths_visualization.properties().width),
-						t(paths_visualization.properties().height);
-
+					// int l(pad/2),
+					// 	b(0),
+					// 	r(paths_visualization.properties().width),
+					// 	t(paths_visualization.properties().height);
 
 
 
 
-					ns_image_standard padded_image;
-					padded_image.init(old_props);
-					// padded_image.prepare_to_recieve_image(new_image_props);
 
-					for (unsigned int y = 0; y < t; y++){
-						for (unsigned int x = 0; x < l;x++){
-							padded_image[y][3*x+0]  = 0;
-							padded_image[y][3*x+1]  = 0;
-							padded_image[y][3*x+2]  = 0;
-						}
-					}
+					// ns_image_standard padded_image;
+					// padded_image.init(old_props);
+					// // padded_image.prepare_to_recieve_image(new_image_props);
+
+					// for (unsigned int y = 0; y < t; y++){
+					// 	for (unsigned int x = 0; x < l;x++){
+					// 		padded_image[y][3*x+0]  = 0;
+					// 		padded_image[y][3*x+1]  = 0;
+					// 		padded_image[y][3*x+2]  = 0;
+					// 	}
+					// }
 
 
-					for (unsigned int y = b; y < t; y++){
-						for (unsigned int x = l; x < r+l; x++){
-							padded_image[y][3*x+0]  = paths_visualization[y][3*(x-l)+0];
-							padded_image[y][3*x+1]  = paths_visualization[y][3*(x-l)+1];
-							padded_image[y][3*x+2]  = paths_visualization[y][3*(x-l)+2];
-						}
-					}
+					// for (unsigned int y = b; y < t; y++){
+					// 	for (unsigned int x = l; x < r+l; x++){
+					// 		padded_image[y][3*x+0]  = paths_visualization[y][3*(x-l)+0];
+					// 		padded_image[y][3*x+1]  = paths_visualization[y][3*(x-l)+1];
+					// 		padded_image[y][3*x+2]  = paths_visualization[y][3*(x-l)+2];
+					// 	}
+					// }
 
-					for (unsigned int y = 0; y < t; y++){
-						for (unsigned int x = r+l; x < r+pad;x++){
-							padded_image[y][3*x+0]  = 0;
-							padded_image[y][3*x+1]  = 0;
-							padded_image[y][3*x+2]  = 0;
-						}
-					}
+					// for (unsigned int y = 0; y < t; y++){
+					// 	for (unsigned int x = r+l; x < r+pad;x++){
+					// 		padded_image[y][3*x+0]  = 0;
+					// 		padded_image[y][3*x+1]  = 0;
+					// 		padded_image[y][3*x+2]  = 0;
+					// 	}
+					// }
 
 
 					ns_image_server_image out_im(region_image.create_storage_for_processed_image(ns_process_movement_paths_visualization,ns_tiff,&sql));
@@ -626,7 +626,7 @@ void ns_image_processing_pipeline::process_region(const ns_image_server_captured
 																	had_to_use_volatile_storage,
 																	report_file_activity_to_db,
 																	volatile_behavior));
-					padded_image.pump(out_im_f.output_stream(),1024);
+					paths_visualization.pump(out_im_f.output_stream(),1024);
 
 					out_im.mark_as_finished_processing(&sql);
 				}
@@ -638,7 +638,7 @@ void ns_image_processing_pipeline::process_region(const ns_image_server_captured
 				register_event(ns_process_movement_paths_visualition_with_mortality_overlay,dynamic_stretch.properties(),parent_event,false,sql);
 				ns_annotation_region_data_id annotation_data(ns_death_time_annotation_set::ns_all_annotations, region_image.experiment_id);
 				ns_experiment_surival_data_cache::const_handle_t annotation_handle;
-				image_server.survival_data_cache.get_for_read(annotation_data, annotation_handle, sql);	
+				image_server.survival_data_cache.get_for_read(annotation_data, annotation_handle, sql);
 
 				//compiler.generate_survival_statistics();
 				overlay_graph(region_image.region_info_id,paths_visualization,region_image.capture_time,annotation_handle(),sql);
@@ -2383,8 +2383,6 @@ void ns_image_processing_pipeline::overlay_graph(const ns_64_bit region_id,ns_im
 	const unsigned int w(lifespan_curve_graph.properties().width),
 			h(lifespan_curve_graph.properties().height);
 
-	int offset = 500;
-
 	for (unsigned int y = 0; y < h; y++){
 		for (unsigned int x = 0; x < w; x++){
 			ns_color_8 v(lifespan_curve_graph[y][3*x],
@@ -2400,7 +2398,7 @@ void ns_image_processing_pipeline::overlay_graph(const ns_64_bit region_id,ns_im
 				if (_y < 0 || _y >= image.properties().height)
 					throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (Y)");
 				for (unsigned int c = 0; c < 3; c++)
-					image[_y-offset][3*_x+c] = (ns_8_bit)((1.0-sh)*image[_y-offset][3*_x+c] + (sh)*lifespan_curve_graph[y][3*x+c]);		
+					image[_y][3*_x+c] = (ns_8_bit)((1.0-sh)*image[_y][3*_x+c] + (sh)*lifespan_curve_graph[y][3*x+c]);
 		}
 	}
 	for (unsigned int y = 0; y < metadata_overlay.properties().height; y++){
@@ -2418,7 +2416,7 @@ void ns_image_processing_pipeline::overlay_graph(const ns_64_bit region_id,ns_im
 			if (_y < 0 || _y >= image.properties().height)
 				throw ns_ex("ns_image_processing_pipeline::Graph overlay problem (Y)");
 			for (unsigned int c = 0; c < 3; c++)
-				image[_y-offset][3*_x+c] = (ns_8_bit)((1.0-sh)*image[_y-offset][3*_x+c] + (sh)*metadata_overlay[y][3*x+c]);
+				image[_y][3*_x+c] = (ns_8_bit)((1.0-sh)*image[_y][3*_x+c] + (sh)*metadata_overlay[y][3*x+c]);
 		}
 	}
 }
