@@ -623,9 +623,9 @@ void ns_movement_visualization_generator::create_time_path_analysis_visualizatio
 	out.init(prop);
 	for (unsigned int y = 0; y < prop.height; ++y){
 		for (unsigned long x = 0; x < prop.width; ++x){
-			out[y][3*x+0] = 255-grayscale[y][x];
-			out[y][3*x+1] = 255-grayscale[y][x];
-			out[y][3*x+2] = 255-grayscale[y][x];
+			out[y][3*x+0] = 0;//255-grayscale[y][x];
+			out[y][3*x+1] = 0;//255-grayscale[y][x];
+			out[y][3*x+2] = 0;//255-grayscale[y][x];
 		}
 	}
 
@@ -738,18 +738,22 @@ void ns_movement_visualization_generator::create_time_path_analysis_visualizatio
 		if (fast_animal_match == 0 && location== compiler_region.locations.end()){
 			const ns_color_8 color(255,255,255);
 			ns_vector_2i size = detected_worms[w]->region_size;
-			out.draw_line_color_thick(pos,pos+ns_vector_2i(size.x,0),color,3);
-			out.draw_line_color_thick(pos,pos+ns_vector_2i(0,size.y),color,3);
-			out.draw_line_color_thick(pos+ns_vector_2i(0,size.y),pos+size,color,3);
-			out.draw_line_color_thick(pos+ns_vector_2i(size.x,0),pos+size,color,3);
+			// out.draw_line_color_thick(pos,pos+ns_vector_2i(size.x,0),color,3);
+			// out.draw_line_color_thick(pos,pos+ns_vector_2i(0,size.y),color,3);
+			// out.draw_line_color_thick(pos+ns_vector_2i(0,size.y),pos+size,color,3);
+			// out.draw_line_color_thick(pos+ns_vector_2i(size.x,0),pos+size,color,3);
 			
 			continue;
 		}
 		ns_color_8  color;
 		if (location != compiler_region.locations.end()){
 			color = (ns_movement_colors::color(ns_movement_event_state(representative_state_event_for_location[location-compiler_region.locations.begin()]->type)));
-			if (location->properties.is_excluded())
-			color = excluded_color;
+			if (location->properties.is_excluded()){
+				// color = excluded_color;
+				continue;
+			}
+
+
 		}
 		else color = ns_movement_colors::color(ns_movement_fast);
 
@@ -757,12 +761,9 @@ void ns_movement_visualization_generator::create_time_path_analysis_visualizatio
 		for (unsigned int y = 0; y < detected_worms[w]->bitmap().properties().height; y++){
 			for (unsigned int x = 0; x < detected_worms[w]->bitmap().properties().width; x++){
 				if (detected_worms[w]->bitmap()[y][x]){
-					out[pos.y + y][3*(pos.x + x)+0]
-						= (ns_8_bit)(.75*color.x + .25*out[pos.y + y][3*(pos.x + x)+0]);
-					out[pos.y + y][3*(pos.x + x)+1]
-						= (ns_8_bit)(.75*color.y + .25*out[pos.y + y][3*(pos.x + x)+1]);
-					out[pos.y + y][3*(pos.x + x)+2]
-						= (ns_8_bit)(.75*color.z + .25*out[pos.y + y][3*(pos.x + x)+2]);
+					out[pos.y + y][3*(pos.x + x)+0] = (ns_8_bit)(color.x);
+					out[pos.y + y][3*(pos.x + x)+1] = (ns_8_bit)(color.y);
+					out[pos.y + y][3*(pos.x + x)+2] = (ns_8_bit)(color.z);
 				}
 			}
 		}
@@ -785,12 +786,9 @@ void ns_movement_visualization_generator::create_time_path_analysis_visualizatio
 									continue;
 								if (y + dy < 0 || y + dy >= detected_worms[w]->edge_bitmap().properties().height)
 									continue;
-								out[pos.y + y+dy][3*(pos.x + x+dx)+0]
-									= (ns_8_bit)(.2*(ns_8_bit)(edge_color.x) + .8*out[pos.y + y+dy][3*(pos.x + x+dx)+0]);
-								out[pos.y + y+dy][3*(pos.x + x+dx)+1]
-									= (ns_8_bit)(.2*(ns_8_bit)(edge_color.y) + .8*out[pos.y + y+dy][3*(pos.x + x+dx)+1]);
-								out[pos.y + y+dy][3*(pos.x + x+dx)+2]
-									= (ns_8_bit)(.2*(ns_8_bit)(edge_color.z) + .8*out[pos.y + y+dy][3*(pos.x + x+dx)+2]);
+								out[pos.y + y+dy][3*(pos.x + x+dx)+0] = (ns_8_bit)(edge_color.x);
+								out[pos.y + y+dy][3*(pos.x + x+dx)+1] = (ns_8_bit)(edge_color.y);
+								out[pos.y + y+dy][3*(pos.x + x+dx)+2] = (ns_8_bit)(edge_color.z);
 							}
 					}
 				}
@@ -798,19 +796,19 @@ void ns_movement_visualization_generator::create_time_path_analysis_visualizatio
 
 		}	
 	}
-	for (unsigned int i = 0; i < compiler_region.locations.size(); i++){
-		if (representative_state_event_for_location[i] == 0 || locations_matched[i])
-			continue;
-		const ns_death_time_annotation & a(*representative_state_event_for_location[i]);
-		if (compiler_region.locations[i].properties.inferred_animal_location){
-			ns_color_8 color = ns_movement_colors::color(ns_movement_event_state(a.type));
-			if (compiler_region.locations[i].properties.is_excluded())
-				color = excluded_color;
-			unsigned long thickness = 4;
-			out.draw_line_color_thick(a.position,a.position + ns_vector_2i(a.size.x,0),color,thickness,.8);
-			out.draw_line_color_thick(a.position,a.position + ns_vector_2i(0,a.size.y),color,thickness,.8);
-			out.draw_line_color_thick(a.position+ns_vector_2i(a.size.x,0),a.position + ns_vector_2i(a.size.x,a.size.y),color,thickness,.6);
-			out.draw_line_color_thick(a.position+ns_vector_2i(0,a.size.y),a.position + ns_vector_2i(a.size.x,a.size.y),color,thickness,.6);
-		}
-	}
+	// for (unsigned int i = 0; i < compiler_region.locations.size(); i++){
+	// 	if (representative_state_event_for_location[i] == 0 || locations_matched[i])
+	// 		continue;
+	// 	const ns_death_time_annotation & a(*representative_state_event_for_location[i]);
+	// 	if (compiler_region.locations[i].properties.inferred_animal_location){
+	// 		ns_color_8 color = ns_movement_colors::color(ns_movement_event_state(a.type));
+	// 		if (compiler_region.locations[i].properties.is_excluded())
+	// 			color = excluded_color;
+	// 		unsigned long thickness = 4;
+	// 		out.draw_line_color_thick(a.position,a.position + ns_vector_2i(a.size.x,0),color,thickness,.8);
+	// 		out.draw_line_color_thick(a.position,a.position + ns_vector_2i(0,a.size.y),color,thickness,.8);
+	// 		out.draw_line_color_thick(a.position+ns_vector_2i(a.size.x,0),a.position + ns_vector_2i(a.size.x,a.size.y),color,thickness,.6);
+	// 		out.draw_line_color_thick(a.position+ns_vector_2i(0,a.size.y),a.position + ns_vector_2i(a.size.x,a.size.y),color,thickness,.6);
+	// 	}
+	// }
 }
