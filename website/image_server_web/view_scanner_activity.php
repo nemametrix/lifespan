@@ -68,6 +68,7 @@ for ($i = 0; $i < sizeof($exper); $i++)
 
 display_worm_page_header("Imaging Cluster Activity");
 ?>
+<a href="view_recent_scans.php">[View Recent Scans]</a><br><br>
 <table width="100%">
 <TR><td valign="top" align="center" width="50%"><center>
 	<table bgcolor="#555555" cellspacing='0' cellpadding='1' >
