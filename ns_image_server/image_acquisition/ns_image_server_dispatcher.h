@@ -38,11 +38,11 @@ class ns_image_server_dispatcher{
 public:
 	//allow_processing: whether the dispatcher should run imaging processing jobs
 	//note that initial compression of raw tifs is always performed regardless of allow_processing value.
-	ns_image_server_dispatcher(const bool _allow_processing):
-	  allow_processing(_allow_processing),delayed_exception(0),
-		  job_scheduler(image_server),processing_lock("ns_isd::processing"),first_device_capture_run(true),
-		  message_handling_lock("ns_isd::message"),memory_allocation_error_count(0),clean_clear_local_db_requested(false),
-		  hotplug_lock("ns_isd::hotplug"),device_capture_management_lock("ns_dml"),time_of_last_scan_for_problems(0),hotplug_running(false),work_sql_connection(0),currently_unable_to_connect_to_the_central_db(false),actively_avoid_connecting_to_central_db(false),timer_sql_connection(0),work_sql_management_lock("ns_isd::work_sql"),timer_sql_management_lock("ns_isd::timer_sql"),trigger_segfault(false){}
+        ns_image_server_dispatcher(const bool _allow_processing):
+          allow_processing(_allow_processing),delayed_exception(0),
+                  processing_lock("ns_isd::processing"),first_device_capture_run(true),
+                  message_handling_lock("ns_isd::message"),memory_allocation_error_count(0),memory_allocation_error_lock("ns_isd::mem_err"),clean_clear_local_db_requested(false),
+                  hotplug_lock("ns_isd::hotplug"),device_capture_management_lock("ns_dml"),time_of_last_scan_for_problems(0),hotplug_running(false),currently_unable_to_connect_to_the_central_db(false),actively_avoid_connecting_to_central_db(false),timer_sql_connection(0),timer_sql_management_lock("ns_isd::timer_sql"),trigger_segfault(false),max_simultaneous_processing_threads(1),processing_threads_initialized(false),random_number_seed(0){}
 
 	void init(const unsigned int port,const unsigned int socket_queue_length);
 	void register_device(const ns_device_name &device);
@@ -70,10 +70,10 @@ public:
 
 	void recieve_image(ns_image_server_message & message,ns_socket_connection & con);
 
-	//returns true if work was found
-	bool  look_for_work();
+        //returns true if work was found
+        bool  look_for_work(const unsigned int worker_id);
 
-	static ns_thread_return_type thread_start_look_for_work(void * dispatcher_pointer);
+        static ns_thread_return_type thread_start_look_for_work(void * context_pointer);
 
 	static ns_thread_return_type thread_start_recieving_image(void * recieve_info);
 
@@ -96,8 +96,17 @@ public:
 	unsigned long time_of_last_scan_for_problems;
 
 private:
-	bool trigger_segfault;
-	void handle_central_connection_error(ns_ex & ex);	
+        struct ns_processing_thread_context{
+                ns_processing_thread_context():dispatcher(0),worker_id(0){}
+                ns_processing_thread_context(ns_image_server_dispatcher * d, unsigned int id):dispatcher(d),worker_id(id){}
+                ns_image_server_dispatcher * dispatcher;
+                unsigned int worker_id;
+        };
+
+        void initialize_processing_thread_pool();
+
+        bool trigger_segfault;
+        void handle_central_connection_error(ns_ex & ex);
 	void recieve_image_thread(ns_image_server_message & message);
 	void scan_for_problems(ns_sql & sql);
 	void handle_memory_allocation_error();
@@ -107,15 +116,18 @@ private:
 
 	bool clean_clear_local_db_requested;
 
-	ns_single_thread_coordinator processing_thread;
-	ns_single_thread_coordinator message_handling_thread;
+        std::vector<ns_single_thread_coordinator *> processing_threads;
+        std::vector<ns_processing_thread_context> processing_thread_contexts;
+        std::vector<ns_processing_job_scheduler *> job_schedulers;
+        unsigned long max_simultaneous_processing_threads;
+        bool processing_threads_initialized;
+        ns_single_thread_coordinator message_handling_thread;
 
-	ns_lock message_handling_lock;
-	ns_lock device_capture_management_lock;
+        ns_lock message_handling_lock;
+        ns_lock device_capture_management_lock;
 
-	ns_lock work_sql_management_lock;
-	ns_lock timer_sql_management_lock;
-	std::list<ns_remote_dispatcher_request> pending_remote_requests;
+        ns_lock timer_sql_management_lock;
+        std::list<ns_remote_dispatcher_request> pending_remote_requests;
 
 	bool currently_unable_to_connect_to_the_central_db;
 	bool actively_avoid_connecting_to_central_db;
@@ -128,16 +140,14 @@ private:
 	void wait_for_local_jobs();
 	void run_hotplug(const bool rescan_bad_barcodes=true,const bool verbose=true);
 
-	ns_processing_job_scheduler job_scheduler;
+        ns_lock processing_lock;
+        ns_lock memory_allocation_error_lock;
+        ns_lock hotplug_lock;
+        bool hotplug_running;
 
-	ns_lock processing_lock;
-	ns_lock hotplug_lock;
-	bool hotplug_running;
+        unsigned int random_number_seed;
 
-	unsigned int random_number_seed;
-
-	ns_sql * work_sql_connection,
-		   * timer_sql_connection;
+        ns_sql * timer_sql_connection;
 };
 
 

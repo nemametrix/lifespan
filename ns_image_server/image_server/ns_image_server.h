@@ -401,7 +401,8 @@ public:
 
 	ns_alert_handler alert_handler;
 	void register_alerts_as_handled();
-	unsigned long number_of_node_processes_per_machine() const{ return number_of_node_processes_per_machine_;}
+        unsigned long number_of_node_processes_per_machine() const{ return number_of_node_processes_per_machine_;}
+        unsigned long processing_threads_per_machine() const{ return processing_threads_per_machine_;}
 	unsigned handle_software_updates()const{return multiprocess_control_options.handle_software_updates;}
 
 	
@@ -441,7 +442,8 @@ public:
 	ns_process_priority process_priority;
 private:
 	ns_multiprocess_control_options multiprocess_control_options;
-	unsigned long number_of_node_processes_per_machine_;
+        unsigned long number_of_node_processes_per_machine_;
+        unsigned long processing_threads_per_machine_;
 	bool alert_handler_running;
 	//ns_lock alert_handler_lock;
 	ns_single_thread_coordinator alert_handler_thread;
