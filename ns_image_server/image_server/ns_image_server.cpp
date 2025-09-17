@@ -31,11 +31,11 @@ using namespace std;
 void ns_image_server_global_debug_handler(const ns_text_stream_t & t);
 
 ns_image_server::ns_image_server():event_log_open(false),exit_requested(false),update_software(false),
-	sql_lock("ns_is::sql"),server_event_lock("ns_is::server_event"),simulator_scan_lock("ns_is::sim_scan"),local_buffer_sql_lock("ns_is::lb"),
-	_act_as_processing_node(true),cleared(false),current_sql_server_address_id(0),
-	image_registration_profile_cache(1024*4), //allocate 4 gigabytes of disk space in which to store reference images for capture sample registration
-	_verbose_debug_output(false),_cache_subdirectory("cache"),sql_database_choice(possible_sql_databases.end()),next_scan_for_problems_time(0),
-_terminal_window_scale_factor(1){
+        sql_lock("ns_is::sql"),server_event_lock("ns_is::server_event"),simulator_scan_lock("ns_is::sim_scan"),local_buffer_sql_lock("ns_is::lb"),
+        _act_as_processing_node(true),cleared(false),current_sql_server_address_id(0),
+        image_registration_profile_cache(1024*4), //allocate 4 gigabytes of disk space in which to store reference images for capture sample registration
+        _verbose_debug_output(false),_cache_subdirectory("cache"),sql_database_choice(possible_sql_databases.end()),next_scan_for_problems_time(0),
+_terminal_window_scale_factor(1),processing_threads_per_machine_(1){
 
 	ns_socket::global_init();
 	ns_worm_detection_constants::init();
@@ -1872,7 +1872,8 @@ void ns_image_server::load_constants(const ns_image_server::ns_image_server_exec
 
 	constants.start_specification_group(ns_ini_specification_group("Image Analysis Server Settings ","These settings control the behavior of image processing servers"));
 	constants.add_field("act_as_processing_node","yes","Should the server run image processing jobs requested by the user via the website? (yes / no)");
-	constants.add_field("nodes_per_machine", "1","A single computer can run multiple copies of the image processing server simultaneously, which allows many jobs to be processed in parallel.  Set this value to the number of parallel servers you want to run on this machine.  This can usually be set to the number of physical cores on the machine's processor, or the number of GB of RAM on the machine; whichever is smaller.");
+        constants.add_field("nodes_per_machine", "1","A single computer can run multiple copies of the image processing server simultaneously, which allows many jobs to be processed in parallel.  Set this value to the number of parallel servers you want to run on this machine.  This can usually be set to the number of physical cores on the machine's processor, or the number of GB of RAM on the machine; whichever is smaller.");
+        constants.add_field("processing_threads_per_machine","0","Number of processing threads each server process should launch.  Leave this set to 0 to match the nodes_per_machine value, or set it to a positive integer to override the number of concurrent jobs a process can execute.");
 	constants.add_field("hide_window","no","On windows, specifies whether the server should start minimized.  (yes / no )");
 	constants.add_field("compile_videos","no","Should the server process videos? (yes / no)");
 	constants.add_field("video_compiler_filename","./x264.exe","Path to the x264 transcoder program required to generate videos.  Only needed on image processing servers.  If you don't have this, set compile_videos to no");
@@ -2009,7 +2010,17 @@ void ns_image_server::load_constants(const ns_image_server::ns_image_server_exec
 			throw ns_ex("Host names must be 15 characters or less.  \"") << host_name << "\" is " << host_name.size() << " characters.";
 		base_host_name			= constants["host_name"];
 		host_name				= opt.host_name(base_host_name);
-		number_of_node_processes_per_machine_ = atol(constants["nodes_per_machine"].c_str());
+                number_of_node_processes_per_machine_ = atol(constants["nodes_per_machine"].c_str());
+                processing_threads_per_machine_ = number_of_node_processes_per_machine_;
+                if (constants.field_specified("processing_threads_per_machine")){
+                        long specified_threads = atol(constants["processing_threads_per_machine"].c_str());
+                        if (specified_threads > 0)
+                                processing_threads_per_machine_ = specified_threads;
+                        else if (specified_threads == 0)
+                                processing_threads_per_machine_ = number_of_node_processes_per_machine_;
+                }
+                if (processing_threads_per_machine_ == 0)
+                        processing_threads_per_machine_ = 1;
 		volatile_storage_directory	= opt.volatile_storage(ns_dir::format_path(constants["volatile_storage_directory"]));
 		_dispatcher_port		= opt.port(atoi(constants["dispatcher_port"].c_str()));
 		_act_as_an_image_capture_server = ( ns_to_bool(constants["act_as_image_capture_server"]) && opt.manage_capture_devices);

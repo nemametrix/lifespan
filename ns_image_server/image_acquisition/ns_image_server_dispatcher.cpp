@@ -39,7 +39,26 @@ void ns_image_server_dispatcher::init(const unsigned int port,const unsigned int
 }
 
 void ns_image_server_dispatcher::connect_timer_sql_connection(){
-		timer_sql_connection = image_server.new_sql_connection(__FILE__,__LINE__);
+                timer_sql_connection = image_server.new_sql_connection(__FILE__,__LINE__);
+}
+
+void ns_image_server_dispatcher::initialize_processing_thread_pool(){
+        if (processing_threads_initialized)
+                return;
+
+        max_simultaneous_processing_threads = image_server.processing_threads_per_machine();
+        if (max_simultaneous_processing_threads == 0)
+                max_simultaneous_processing_threads = 1;
+
+        processing_threads.resize(max_simultaneous_processing_threads,0);
+        processing_thread_contexts.resize(max_simultaneous_processing_threads);
+        job_schedulers.resize(max_simultaneous_processing_threads,0);
+        for (unsigned int i = 0; i < max_simultaneous_processing_threads; ++i){
+                processing_threads[i] = new ns_single_thread_coordinator;
+                processing_thread_contexts[i] = ns_processing_thread_context(this,i);
+                job_schedulers[i] = new ns_processing_job_scheduler(image_server);
+        }
+        processing_threads_initialized = true;
 }
 ns_thread_return_type handle_dispatcher_request(void * d){
 	ns_image_server_dispatcher * dispatcher(static_cast<ns_image_server_dispatcher *>(d));
@@ -367,21 +386,32 @@ void ns_image_server_dispatcher::handle_delayed_exception(){
 	}
 }
 void ns_image_server_dispatcher::clear_for_termination(){
-	ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
-	if (processing_thread.is_running())
-		processing_thread.block_on_finish();
-	if (schedule_error_check_thread.is_running())
-		schedule_error_check_thread.block_on_finish();
-	lock.release();
-	//ns_safe_delete(processing_thread);
-	ns_safe_delete(delayed_exception);
-	
-	ns_acquire_lock_for_scope work_lock(work_sql_management_lock,__FILE__,__LINE__);
-	ns_safe_delete(work_sql_connection);
-	work_lock.release();
-	ns_acquire_lock_for_scope timer_lock(timer_sql_management_lock,__FILE__,__LINE__);
-	ns_safe_delete(timer_sql_connection);
-	timer_lock.release();
+        ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
+        if (processing_threads_initialized){
+                for (unsigned int i = 0; i < processing_threads.size(); ++i){
+                        if (processing_threads[i] != 0 && processing_threads[i]->is_running())
+                                processing_threads[i]->block_on_finish();
+                }
+        }
+        if (schedule_error_check_thread.is_running())
+                schedule_error_check_thread.block_on_finish();
+        lock.release();
+        ns_safe_delete(delayed_exception);
+
+        if (processing_threads_initialized){
+                for (unsigned int i = 0; i < job_schedulers.size(); ++i)
+                        ns_safe_delete(job_schedulers[i]);
+                for (unsigned int i = 0; i < processing_threads.size(); ++i)
+                        ns_safe_delete(processing_threads[i]);
+                processing_threads.clear();
+                processing_thread_contexts.clear();
+                job_schedulers.clear();
+                processing_threads_initialized = false;
+        }
+
+        ns_acquire_lock_for_scope timer_lock(timer_sql_management_lock,__FILE__,__LINE__);
+        ns_safe_delete(timer_sql_connection);
+        timer_lock.release();
 }
 ns_image_server_dispatcher::~ns_image_server_dispatcher(){
 	clear_for_termination();
@@ -389,14 +419,22 @@ ns_image_server_dispatcher::~ns_image_server_dispatcher(){
 
 void ns_image_server_dispatcher::wait_for_local_jobs(){
 	
-	ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
-	if (processing_thread.is_running()){
-		image_server.register_server_event(ns_image_server::ns_register_in_central_db_with_fallback,ns_image_server_event("Exit requested.  Waiting for local jobs to finish..."));
-		processing_thread.block_on_finish();
-	}
-	lock.release();
-	if(schedule_error_check_thread.is_running())
-		schedule_error_check_thread.block_on_finish();
+        ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
+        bool waiting_for_jobs(false);
+        if (processing_threads_initialized){
+                for (unsigned int i = 0; i < processing_threads.size(); ++i){
+                        if (processing_threads[i] != 0 && processing_threads[i]->is_running()){
+                                if (!waiting_for_jobs){
+                                        image_server.register_server_event(ns_image_server::ns_register_in_central_db_with_fallback,ns_image_server_event("Exit requested.  Waiting for local jobs to finish..."));
+                                        waiting_for_jobs = true;
+                                }
+                                processing_threads[i]->block_on_finish();
+                        }
+                }
+        }
+        lock.release();
+        if(schedule_error_check_thread.is_running())
+                schedule_error_check_thread.block_on_finish();
 	image_server.wait_for_pending_threads();
 	image_server.device_manager.wait_for_all_scans_to_complete();
 	buffered_capture_scheduler.image_capture_data_manager.wait_for_transfer_finish();
@@ -408,21 +446,30 @@ void ns_image_server_dispatcher::start_looking_for_new_work(){
 		return;
 	}
 	//ns_sql * sql = image_server.new_sql_connection();
-	try{
-		//when a processing thread is running, its handle is stored in processing_thread.
-		ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
-		if (allow_processing && !processing_thread.is_running()){
-			//get a job from the server
-			cerr << ".";
-			processing_thread.run(thread_start_look_for_work,this);
-		}
-		else cerr << ":";
-		lock.release();
-	}
-	catch(std::exception & exception){
-		ns_ex ex(exception);
-		throw ex;
-	}
+        try{
+                ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
+                if (!processing_threads_initialized)
+                        initialize_processing_thread_pool();
+
+                if (allow_processing && !image_server.exit_requested){
+                        bool started_job(false);
+                        for (unsigned int i = 0; i < processing_threads.size(); ++i){
+                                if (processing_threads[i] != 0 && !processing_threads[i]->is_running()){
+                                        processing_threads[i]->run(thread_start_look_for_work,&processing_thread_contexts[i]);
+                                        cerr << ".";
+                                        started_job = true;
+                                }
+                        }
+                        if (!started_job)
+                                cerr << ":";
+                }
+                else cerr << ":";
+                lock.release();
+        }
+        catch(std::exception & exception){
+                ns_ex ex(exception);
+                throw ex;
+        }
 }
 
 void ns_image_server_dispatcher::handle_central_connection_error(ns_ex & ex){
@@ -847,21 +894,27 @@ void ns_image_server_dispatcher::on_timer(){
 		}
 		try{
 			if (image_server.current_sql_database() != database_requested){
-				try{
-					ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
-					if (processing_thread.is_running()){
-						image_server.register_server_event(ns_image_server::ns_register_in_central_db,ns_image_server_event("Database Change Requested: waiting for jobs to finish."));
-						processing_thread.block_on_finish();
-					}
-					image_server.set_sql_database(database_requested);
-					if (work_sql_connection!=0)
-						work_sql_connection->select_db(image_server.current_sql_database());
-					if (timer_sql_connection!=0)
-					timer_sql_connection->select_db(image_server.current_sql_database());
+                                try{
+                                        ns_acquire_lock_for_scope lock(processing_lock,__FILE__,__LINE__);
+                                        if (processing_threads_initialized){
+                                                bool notified(false);
+                                                for (unsigned int i = 0; i < processing_threads.size(); ++i){
+                                                        if (processing_threads[i] != 0 && processing_threads[i]->is_running()){
+                                                                if (!notified){
+                                                                        image_server.register_server_event(ns_image_server::ns_register_in_central_db,ns_image_server_event("Database Change Requested: waiting for jobs to finish."));
+                                                                        notified = true;
+                                                                }
+                                                                processing_threads[i]->block_on_finish();
+                                                        }
+                                                }
+                                        }
+                                        image_server.set_sql_database(database_requested);
+                                        if (timer_sql_connection!=0)
+                                                timer_sql_connection->select_db(image_server.current_sql_database());
 
-					lock.release();
+                                        lock.release();
 
-				}
+                                }
 				catch(...){
 					timer_sql_connection->clear_query();
 					*timer_sql_connection << "UPDATE hosts SET database_used = '" << image_server.current_sql_database() << "' WHERE id=" << image_server.host_id();
@@ -1028,76 +1081,73 @@ void ns_image_server_dispatcher::recieve_image_thread(ns_image_server_message & 
 //Look for plate image capture jobs on remote machines.
 //All the BEGINing and COMMITing maintains atomic nature
 //of job picking
-bool ns_image_server_dispatcher::look_for_work(){
-	bool action_performed(false);
-	ns_acquire_lock_for_scope sql_lock(work_sql_management_lock,__FILE__,__LINE__);
-	if (work_sql_connection == 0){
-		work_sql_connection = image_server.new_sql_connection(__FILE__,__LINE__);
-	}else{
-		//clear any dangling transactions
-		work_sql_connection->set_autocommit(true);
-		work_sql_connection->send_query("ROLLBACK");
-	}
-	try{
-		work_sql_connection->clear_query();
-		work_sql_connection->check_connection();
-	}
-	catch(ns_ex & ex){
-		ns_image_server_event ev;
-		ev << "Lost connection to mySQL server.  Reconnecting..." << ns_ts_sql_error;
-		image_server.register_server_event_no_db(ev);
-		ns_safe_delete(work_sql_connection);
-		work_sql_connection = image_server.new_sql_connection(__FILE__,__LINE__);
-	}
-	sql_lock.release();
-	
-	try{
-		image_server.perform_experiment_maintenance(*work_sql_connection);
-		//search the server for an image processing task
-		const bool first_in_first_out_job_queue (image_server.get_cluster_constant_value("job_queue_is_FIFO","false",work_sql_connection)!="false");
-		action_performed = job_scheduler.run_a_job(*work_sql_connection,first_in_first_out_job_queue);
-		if (action_performed)
-			register_succesful_operation();
-		work_sql_connection->send_query("COMMIT");
-		work_sql_connection->send_query("UNLOCK TABLES");
-		//if we're running as a screen saver, don't hog memory when
-		//the user is on the computer
-		if (!image_server.run_autonomously())
-			image_server.image_storage.cache.clear_memory_cache();
-		job_scheduler.clear_heap();
+bool ns_image_server_dispatcher::look_for_work(const unsigned int worker_id){
+        bool action_performed(false);
+        if (worker_id >= job_schedulers.size() || job_schedulers[worker_id] == 0)
+                return false;
 
-		//ns_thread::sleep(4*1000 + 39);
-		//cerr << "Done working.\n";
-		//notify the dispatcher that the current job is done.
-	}
-	catch(...){
+        ns_processing_job_scheduler & scheduler(*job_schedulers[worker_id]);
 
-		//any code needed to maintain lock integrity should go here
-		if (work_sql_connection!= 0){
-			work_sql_connection->send_query("COMMIT");
-			//con->disconnect();
-			//delete con;
-			//con = 0;
-		}
-		if (!image_server.run_autonomously())
-			image_server.image_storage.cache.clear_memory_cache();
-		throw;
-	}
-	return action_performed;
+        ns_acquire_for_scope<ns_sql> sql(image_server.new_sql_connection(__FILE__,__LINE__));
+        ns_sql * connection(&sql());
+        connection->set_autocommit(true);
+        connection->send_query("ROLLBACK");
+        try{
+                connection->clear_query();
+                connection->check_connection();
+        }
+        catch(ns_ex & ex){
+                ns_image_server_event ev;
+                ev << "Lost connection to mySQL server.  Reconnecting..." << ns_ts_sql_error;
+                image_server.register_server_event_no_db(ev);
+                sql.release();
+                sql.attach(image_server.new_sql_connection(__FILE__,__LINE__));
+                connection = &sql();
+                connection->set_autocommit(true);
+                connection->send_query("ROLLBACK");
+        }
+
+        try{
+                image_server.perform_experiment_maintenance(*connection);
+                const bool first_in_first_out_job_queue (image_server.get_cluster_constant_value("job_queue_is_FIFO","false",connection)!="false");
+                action_performed = scheduler.run_a_job(*connection,first_in_first_out_job_queue);
+                if (action_performed)
+                        register_succesful_operation();
+                connection->send_query("COMMIT");
+                connection->send_query("UNLOCK TABLES");
+                if (!image_server.run_autonomously())
+                        image_server.image_storage.cache.clear_memory_cache();
+                scheduler.clear_heap();
+        }
+        catch(...){
+                if (connection != 0)
+                        connection->send_query("COMMIT");
+                if (!image_server.run_autonomously())
+                        image_server.image_storage.cache.clear_memory_cache();
+                scheduler.clear_heap();
+                throw;
+        }
+        return action_performed;
 }
 
 void ns_image_server_dispatcher::register_succesful_operation(){
-	if (memory_allocation_error_count > 0)
-		memory_allocation_error_count--;
+        ns_acquire_lock_for_scope lock(memory_allocation_error_lock,__FILE__,__LINE__);
+        if (memory_allocation_error_count > 0)
+                memory_allocation_error_count--;
 }
 void ns_image_server_dispatcher::handle_memory_allocation_error(){
-	memory_allocation_error_count++;
-	image_server.image_storage.cache.clear_memory_cache();
-	if (memory_allocation_error_count > 5){
-		image_server.pause_host();	
-		ns_ex ex("The host has recently encountered too many memory errors.  The host will pause until futher notice.");
-		image_server.register_server_event(ns_image_server::ns_register_in_central_db,ex);
-	}
+        bool too_many(false);
+        {
+                ns_acquire_lock_for_scope lock(memory_allocation_error_lock,__FILE__,__LINE__);
+                memory_allocation_error_count++;
+                too_many = memory_allocation_error_count > 5;
+        }
+        image_server.image_storage.cache.clear_memory_cache();
+        if (too_many){
+                image_server.pause_host();
+                ns_ex ex("The host has recently encountered too many memory errors.  The host will pause until futher notice.");
+                image_server.register_server_event(ns_image_server::ns_register_in_central_db,ex);
+        }
 }
 
 ns_thread_return_type ns_asynch_start_looking_for_new_work(void * dispatcher_pointer){
@@ -1107,46 +1157,52 @@ ns_thread_return_type ns_asynch_start_looking_for_new_work(void * dispatcher_poi
 	return 0;
 }
 
-ns_thread_return_type ns_image_server_dispatcher::thread_start_look_for_work(void * dispatcher_pointer){
-	ns_image_server_dispatcher * d = reinterpret_cast<ns_image_server_dispatcher *>(dispatcher_pointer);
-	
-	bool found_work(false);
-	try{
-		try{
-			ns_thread current_thread (ns_thread::get_current_thread());
-			current_thread.set_priority(NS_THREAD_LOW);
-			found_work = d->look_for_work();
-		}
-		catch(std::exception & exception){
-			ns_ex ex(exception);
-			image_server.register_server_event(ns_image_server::ns_register_in_central_db,ex);
-			if (ex.type() == ns_memory_allocation)
-				d->handle_memory_allocation_error();			
-		}
-		
+ns_thread_return_type ns_image_server_dispatcher::thread_start_look_for_work(void * context_pointer){
+        ns_processing_thread_context * context = reinterpret_cast<ns_processing_thread_context *>(context_pointer);
+        ns_image_server_dispatcher * d = context->dispatcher;
+        const unsigned int worker_id(context->worker_id);
 
-		//ns_acquire_lock_for_scope lock(d->processing_lock,__FILE__,__LINE__);
-		d->processing_thread.report_as_finished();
-		//if we found work, immediately look for another job.
-		if (found_work && !image_server.exit_requested)
-			ns_thread start_looking_for_new_work(ns_asynch_start_looking_for_new_work,dispatcher_pointer);
+        bool found_work(false);
+        try{
+                try{
+                        ns_thread current_thread (ns_thread::get_current_thread());
+                        current_thread.set_priority(NS_THREAD_LOW);
+                        found_work = d->look_for_work(worker_id);
+                }
+                catch(std::exception & exception){
+                        ns_ex ex(exception);
+                        image_server.register_server_event(ns_image_server::ns_register_in_central_db,ex);
+                        if (ex.type() == ns_memory_allocation)
+                                d->handle_memory_allocation_error();
+                }
 
-		return 0;
-	}
-	catch(std::exception & exception){
-		ns_ex ex(exception);
-		//self.detach();
-        ex << ex.text() << "(Error in processing_thread)";
-			if (ex.type() == ns_memory_allocation)
-				image_server.image_storage.cache.clear_memory_cache();
-		
-		image_server.register_server_event(ns_image_server::ns_register_in_central_db_with_fallback,ex);
-		image_server.ns_image_server::shut_down_host();
+                {
+                        ns_acquire_lock_for_scope lock(d->processing_lock,__FILE__,__LINE__);
+                        if (worker_id < d->processing_threads.size() && d->processing_threads[worker_id] != 0)
+                                d->processing_threads[worker_id]->report_as_finished();
+                }
+                if (found_work && !image_server.exit_requested)
+                        ns_thread start_looking_for_new_work(ns_asynch_start_looking_for_new_work,d);
 
-		d->processing_thread.report_as_finished();
+                return 0;
+        }
+        catch(std::exception & exception){
+                ns_ex ex(exception);
+                ex << ex.text() << "(Error in processing_thread)";
+                if (ex.type() == ns_memory_allocation)
+                        image_server.image_storage.cache.clear_memory_cache();
 
-		return 0;
-	}
+                image_server.register_server_event(ns_image_server::ns_register_in_central_db_with_fallback,ex);
+                image_server.ns_image_server::shut_down_host();
+
+                {
+                        ns_acquire_lock_for_scope lock(d->processing_lock,__FILE__,__LINE__);
+                        if (worker_id < d->processing_threads.size() && d->processing_threads[worker_id] != 0)
+                                d->processing_threads[worker_id]->report_as_finished();
+                }
+
+                return 0;
+        }
 }
 ns_thread_return_type ns_scan_for_problems(void * d){
 
